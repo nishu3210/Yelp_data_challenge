@@ -9,3 +9,12 @@ There are 4 data frames in that:
 2. busT
 3. revT - Being used for collaborative filtering
 4. tipT
+
+Final Code Files:
+Task1:
+Task2: Yelp-Collaborative Filtering.ipynb
+
+
+Initial Files not to be used for evaluation:
+1. Yelp 2.ipynb
+2. Yelp 3.ipynb
