@@ -1,0 +1,180 @@
+---
+title: "task1_analysis"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+library(stringr)
+library(tidyr)
+```
+
+```{r}
+path = "/home/nitesh-jaswal/Study/Search/Project/"
+tip.df = readRDS(paste0(path , "Task1/tip.RDS"))
+user.df = readRDS(paste0(path , "Task1/user.RDS"))
+business.df = readRDS(paste0(path , "Task1/business.RDS"))
+# review.df = readRDS(paste0(path , "Task1/review.RDS"))
+
+toronoto_reviews_unfiltered_users = readRDS(paste0(path, "toronoto_reviews_unfiltered_users.RDS"))
+```
+
+Functions
+```{r}
+uniqueLength <- function(x) {
+  return( x %>% unique() %>% length() )
+}
+filterCityUsersAndMerge <- function(k) {
+  if(is.na(k)) {
+    return(truncated_review_df)
+  }
+  else {
+    user.df_truncated <- filter(user.df, review_count >= k)
+    toronoto_reviews_filtered_users.df = inner_join(toronoto_reviews_unfiltered_users,  user.df_truncated, by = "user_id")
+    return(toronoto_reviews_filtered_users.df)
+  }
+}
+
+```
+
+```{r}
+# user_truncated.df <- filter(user.df, review_count >= 40)
+# toronoto_reviews_filtered_users = filter(toronoto_reviews_unfiltered_users, user_id %in% user_truncated.df$user_id)
+toronoto_reviews_filtered_users = filterCityUsersAndMerge(40)
+toronoto_reviews_filtered_users = toronoto_reviews_filtered_users %>% rename("business_name" = "name.x", "user_name" = "name.y","business_cool" = "cool.x", "user_cool" = "cool.y", "business_funny" = "funny.x", "user_funny" = "funny.y", "business_review_count" = "review_count.x", "user_review_count" = "review_count.y", "business_useful" = "useful.x", "user_useful" = "useful.y")
+
+toronoto_reviews_filtered_cat <- toronoto_reviews_filtered_users %>% filter(regexec("Food|Restaurants|Cafe?s|Bars|Juice", categories, perl = TRUE) > -1) 
+user_truncated.df = filter(user.df, user_id %in% toronoto_reviews_filtered_cat$user_id)
+business_truncated.df = filter(business.df, business_id %in% toronoto_reviews_filtered_cat$business_id)
+# toronto_filtered_tip = filter(tip.df, business_id %in% toronoto_reviews_filtered_cat$business_id)
+# toronto_filtered_tip = filter(tip.df, user_id %in% toronoto_reviews_filtered_cat$user_id)
+```
+
+```{r}
+toronoto_reviews_filtered_cat %>% filter(user_id == "orh0HRUNCWuQMt9Iia_osg") 
+
+category_list = toronoto_reviews_filtered_cat$categories %>% unlist %>% unique
+category_tokens_list = lapply(category_list, function(x) {
+  tokens =  strsplit(x, ",") %>% unlist %>% str_trim
+  return(tokens)
+}) %>% unlist %>% unique
+View(category_tokens_list)
+```
+
+```{r}
+business_truncated.df %>% View()
+business_index.df = business_truncated.df %>% select(business_id, name, categories, stars) 
+```
+
+Append attributes
+```{r}
+attributes_df <- data.frame("business_id" = toronoto_reviews_filtered_cat$business_id, toronoto_reviews_filtered_cat$attributes)
+
+attributes_df <- select(attributes_df, business_id, RestaurantsPriceRange2, BusinessParking, BikeParking, RestaurantsTakeOut, GoodForKids, OutdoorSeating, RestaurantsGoodForGroups, RestaurantsReservations, RestaurantsDelivery	, WiFi)
+
+attributes_df <- unique(attributes_df)
+
+attributeJSONParser <- function(x) {
+  if(is.na(x)) {
+    return(NA)
+  }
+  else {
+    x <- gsub("'", "", x)
+    # cat(x)
+    x <- gsub("([\\w\\-]+)", "\"\\1\"", x, perl = TRUE)
+    # cat(x)
+    return( jsonlite::parse_json(x) %>% as.data.frame )
+  }
+}
+
+attributes_df <- drop_na(attributes_df)
+
+# review_id, review_stars, user_id, user_useful, user_cool, user_funny, elite, fans,
+
+# Parse and append BusinessParkingJSON
+temp <- lapply(attributes_df$BusinessParking, attributeJSONParser)
+n_row = length(temp)
+business_parking.df <- data.frame("business_id" = attributes_df$business_id, "Parking.Garage" = numeric(n_row), "Parking.Street" = numeric(n_row), "Parking.Validated" = numeric(n_row), "Parking.Lot" = numeric(n_row), "Parking.Valet" = numeric(n_row))
+flag = !is.na(temp)
+
+for(i in 1:n_row) {
+  
+  if(flag[i] && nrow(temp[[i]]) > 0) {
+    entry = ifelse(temp[[i]] == "True", 1, 0) 
+    business_parking.df[i,2:6] = entry
+    # cat(" ")
+    # cat(i)
+  }
+  else {
+    entry = list(NA,NA,NA,NA,NA)
+    business_parking.df[i,2:6] = entry
+  }
+}
+attributes_df = inner_join(attributes_df, business_parking.df, by = "business_id") %>% select(-BusinessParking)
+
+rm(list = "temp")
+
+```
+
+```{r}
+toronoto_reviews_filtered_cat <- inner_join(toronoto_reviews_filtered_cat, attributes_df, by = "business_id")
+toronoto_reviews_filtered_cat <- toronoto_reviews_filtered_cat %>% select(-attributes)
+business_truncated.df <- inner_join(business_truncated.df, attributes_df, by = "business_id") %>% select(-attributes)
+
+```
+
+
+```{r}
+# Filter based on business stars <= 2.5
+toronoto_reviews_filtered_cat = toronoto_reviews_filtered_cat %>% filter(business_stars >= 2) 
+
+final_filtered_reviews <- toronoto_reviews_filtered_cat %>% select(review_id, user_id, categories, business_id, business_stars, review_stars, text)
+
+write.csv(final_filtered_reviews, paste0(path, "final_filtered_reviews.csv"))
+
+```
+
+
+
+```{r}
+user_id_list = final_filtered_reviews$user_id %>% unlist %>% unique
+combined_text_df <- lapply(user_id_list, function(x) {
+  txt = filter(final_filtered_reviews, user_id == x) %>% select(text) %>% unlist
+  return( paste0(txt, collapse = "\n\n") )
+})
+names(combined_text_df) <- user_id_list
+
+for(i in 1:length(user_id_list)) {
+  txt = combined_text_df[[i]]
+  fileConn = file(paste0(path, "Task1/data/", user_id_list[i]))
+  writeLines(txt, fileConn )
+  close(fileConn)
+}
+
+```
+
+  
+
+```{r}
+bis_id_list = final_filtered_reviews$business_id %>% unlist %>% unique
+combined_text_df <- lapply(bis_id_list, function(x) {
+  txt = filter(final_filtered_reviews, user_id == x) %>% select(text) %>% unlist
+  return( paste0(txt, collapse = "\n\n") )
+})
+names(combined_text_df) <- bis_id_list
+
+for(i in 1:length(bis_id_list)) {
+  txt = combined_text_df[[i]]
+  fileConn = file(paste0(path, "Task1/data/", bis_id_list[i]))
+  writeLines(txt, fileConn )
+  close(fileConn)
+}
+
+```
+
+
+
+
+
