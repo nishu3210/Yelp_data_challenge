@@ -11,7 +11,7 @@ There are 4 data frames in that:
 4. tipT
 
 Final Code Files:
-Task1:
+
 Task2: Yelp_Collaborative Filtering.ipynb
 
 
